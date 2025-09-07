@@ -1,0 +1,17 @@
+{
+  "cezar": {
+    "senha": "1234",
+    "aliases": {
+      "portao21": "https://api-v2.voicemonkey.io/trigger?token=1df653fdfe549a8aa8b6facb19b83111_e0e01a892029324c3b20d1ee3c0bf363&device=teste009",
+      "porta12": "https://api-v2.voicemonkey.io/trigger?token=1df653fdfe549a8aa8b6facb19b83111_e0e01a892029324c3b20d1ee3c0bf363&device=teste009",
+      "garagemvip": "https://api-v2.voicemonkey.io/trigger?token=1df653fdfe549a8aa8b6facb19b83111_e0e01a892029324c3b20d1ee3c0bf363&device=portatron",
+      "portaojoao": "https://api-v2.voicemonkey.io/trigger?token=1df653fdfe549a8aa8b6facb19b83111_e0e01a892029324c3b20d1ee3c0bf363&device=teste001"
+    }
+  },
+  "elza quintilhano": {
+    "senha": "casa2121",
+    "aliases": {
+      "portaojoao": "https://api-v2.voicemonkey.io/trigger?token=1df653fdfe549a8aa8b6facb19b83111_e0e01a892029324c3b20d1ee3c0bf363&device=teste001"
+    }
+  }
+}
