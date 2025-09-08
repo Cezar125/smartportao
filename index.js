@@ -7,6 +7,15 @@ const app = express();
 const port = 4000;
 const FILE_PATH = './usuarios.json';
 
+// Função para normalizar textos (usuário e alias)
+const normalizar = (texto) => {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")           // remove acentos
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "");       // remove espaços
+};
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -45,7 +54,7 @@ app.get('/login', (req, res) => {
 // Processa login
 app.post('/login', (req, res) => {
   const { usuario, senha } = req.body;
-  const u = usuario.toLowerCase();
+  const u = normalizar(usuario);
 
   if (!usuarios[u]) {
     return res.send('❌ Usuário não encontrado. <a href="/login">Voltar</a>');
@@ -77,7 +86,7 @@ app.get('/registrar', (req, res) => {
 // Processa cadastro
 app.post('/registrar', (req, res) => {
   const { usuario, senha } = req.body;
-  const u = usuario.toLowerCase();
+  const u = normalizar(usuario);
 
   if (usuarios[u]) {
     return res.send('❌ Usuário já existe. <a href="/registrar">Tente outro</a>');
@@ -129,9 +138,13 @@ app.post('/cadastrar-alias', (req, res) => {
   if (!u) return res.redirect('/login');
 
   const { alias, url } = req.body;
-  const a = alias.toLowerCase().replace(/\s+/g, '');
+  const a = normalizar(alias);
 
   if (!usuarios[u].aliases) usuarios[u].aliases = {};
+  if (usuarios[u].aliases[a]) {
+    return res.send('❌ Esse alias já existe. <a href="/painel">Voltar</a>');
+  }
+
   usuarios[u].aliases[a] = url;
 
   try {
@@ -151,8 +164,8 @@ app.get('/logout', (req, res) => {
 
 // Disparo por alias com nome de usuário na query string
 app.get('/:alias', (req, res) => {
-  const a = req.params.alias.toLowerCase();
-  const u = req.query.usuario?.toLowerCase(); // vem da Alexa
+  const a = normalizar(req.params.alias);
+  const u = normalizar(req.query.usuario);
 
   if (!u || !usuarios[u]) {
     return res.status(401).send('❌ Usuário não informado ou inválido.');
@@ -175,9 +188,11 @@ app.get('/:alias', (req, res) => {
   });
 });
 
-
-
-
 app.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);
 });
+
+
+
+
+
