@@ -1,0 +1,183 @@
+import express from 'express';
+import session from 'express-session';
+import fs from 'fs';
+import { get as httpsGet } from 'https';
+
+const app = express();
+const port = 4000;
+const FILE_PATH = './usuarios.json';
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+app.use(session({
+  secret: 'segredo-cezar',
+  resave: false,
+  saveUninitialized: true
+}));
+
+// Carrega usuários
+let usuarios = {};
+if (fs.existsSync(FILE_PATH)) {
+  usuarios = JSON.parse(fs.readFileSync(FILE_PATH));
+}
+
+// Rota inicial
+app.get('/', (req, res) => {
+  res.redirect('/login');
+});
+
+// Tela de login
+app.get('/login', (req, res) => {
+  res.send(`
+    <h2>Login</h2>
+    <form method="POST" action="/login">
+      <label>Usuário:</label><br>
+      <input type="text" name="usuario" required><br><br>
+      <label>Senha:</label><br>
+      <input type="password" name="senha" required><br><br>
+      <button type="submit">Entrar</button>
+    </form>
+    <p><a href="/registrar">Não tenho conta</a></p>
+  `);
+});
+
+// Processa login
+app.post('/login', (req, res) => {
+  const { usuario, senha } = req.body;
+  const u = usuario.toLowerCase();
+
+  if (!usuarios[u]) {
+    return res.send('❌ Usuário não encontrado. <a href="/login">Voltar</a>');
+  }
+
+  if (usuarios[u].senha !== senha) {
+    return res.send('❌ Senha incorreta. <a href="/login">Voltar</a>');
+  }
+
+  req.session.usuario = u;
+  res.redirect('/painel');
+});
+
+// Tela de cadastro
+app.get('/registrar', (req, res) => {
+  res.send(`
+    <h2>Cadastro de Usuário</h2>
+    <form method="POST" action="/registrar">
+      <label>Nome de usuário:</label><br>
+      <input type="text" name="usuario" required><br><br>
+      <label>Senha:</label><br>
+      <input type="password" name="senha" required><br><br>
+      <button type="submit">Cadastrar</button>
+    </form>
+    <p><a href="/login">Já tenho conta</a></p>
+  `);
+});
+
+// Processa cadastro
+app.post('/registrar', (req, res) => {
+  const { usuario, senha } = req.body;
+  const u = usuario.toLowerCase();
+
+  if (usuarios[u]) {
+    return res.send('❌ Usuário já existe. <a href="/registrar">Tente outro</a>');
+  }
+
+  usuarios[u] = {
+    senha,
+    aliases: {}
+  };
+
+  try {
+    fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
+    console.log(`✅ Novo usuário registrado: ${u}`);
+  } catch (err) {
+    console.error('❌ Erro ao salvar novo usuário:', err);
+    return res.send('❌ Erro ao salvar. Tente novamente.');
+  }
+
+  res.send(`✅ Usuário "${u}" cadastrado com sucesso. <a href="/login">Fazer login</a>`);
+});
+
+// Painel do usuário
+app.get('/painel', (req, res) => {
+  const u = req.session.usuario;
+  if (!u) return res.redirect('/login');
+
+  const aliases = usuarios[u]?.aliases || {};
+  let lista = Object.entries(aliases).map(([alias, url]) => `<li><b>${alias}</b>: ${url}</li>`).join('');
+
+  res.send(`
+    <h2>Painel de ${u}</h2>
+    <p><a href="/logout">Sair</a></p>
+    <h3>Aliases cadastrados:</h3>
+    <ul>${lista || '<li>Nenhum alias cadastrado.</li>'}</ul>
+    <h3>Cadastrar novo alias</h3>
+    <form method="POST" action="/cadastrar-alias">
+      <label>Alias:</label><br>
+      <input type="text" name="alias" required><br><br>
+      <label>URL do Voice Monkey:</label><br>
+      <input type="text" name="url" required><br><br>
+      <button type="submit">Cadastrar</button>
+    </form>
+  `);
+});
+
+// Cadastrar alias
+app.post('/cadastrar-alias', (req, res) => {
+  const u = req.session.usuario;
+  if (!u) return res.redirect('/login');
+
+  const { alias, url } = req.body;
+  const a = alias.toLowerCase().replace(/\s+/g, '');
+
+  if (!usuarios[u].aliases) usuarios[u].aliases = {};
+  usuarios[u].aliases[a] = url;
+
+  try {
+    fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
+    console.log(`✅ Alias "${a}" salvo para o usuário "${u}"`);
+  } catch (err) {
+    console.error('❌ Erro ao salvar alias:', err);
+  }
+
+  res.redirect('/painel');
+});
+
+// Logout
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/login'));
+});
+
+// Disparo por alias com nome de usuário na query string
+app.get('/:alias', (req, res) => {
+  const a = req.params.alias.toLowerCase();
+  const u = req.query.usuario?.toLowerCase(); // vem da Alexa
+
+  if (!u || !usuarios[u]) {
+    return res.status(401).send('❌ Usuário não informado ou inválido.');
+  }
+
+  const url = usuarios[u]?.aliases?.[a];
+  if (!url) {
+    return res.status(404).send(`❌ Alias "${a}" não encontrado para o usuário "${u}".`);
+  }
+
+  httpsGet(url, response => {
+    let data = '';
+    response.on('data', chunk => { data += chunk; });
+    response.on('end', () => {
+      res.send(`✅ Disparo enviado para "${a}". Resposta: ${data}`);
+    });
+  }).on('error', e => {
+    console.error(e);
+    res.status(500).send('❌ Erro ao acessar a URL.');
+  });
+});
+
+
+
+
+app.listen(port, () => {
+  console.log(`🚀 Servidor rodando na porta ${port}`);
+});
