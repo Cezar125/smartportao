@@ -78,18 +78,22 @@ app.get('/login', (req, res) => {
         <h1 style="font-size: 48px;">TRON</h1>
         <h2>Smart Portão</h2>
         <h3>Login de Usuário</h3>
-        <form method="POST" action="/login">
+
+        <!-- 👇 Aqui está o formulário com autocomplete desativado -->
+        <form method="POST" action="/login" autocomplete="off">
           <label>Nome de usuário:</label><br>
-          <input type="text" name="usuario" required><br><br>
+          <input type="text" name="usuario" autocomplete="off" required><br><br>
           <label>Senha:</label><br>
-          <input type="password" name="senha" required><br><br>
+          <input type="password" name="senha" autocomplete="new-password" required><br><br>
           <button type="submit">Entrar</button>
         </form>
+
         <p><a href="/registrar">Criar nova conta</a></p>
       </body>
     </html>
   `);
 });
+
 
 app.get('/registrar', (req, res) => {
   res.send(`
@@ -416,6 +420,7 @@ app.get('/:alias', (req, res) => {
 app.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);
 });
+
 
 
 
