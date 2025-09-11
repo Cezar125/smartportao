@@ -201,8 +201,58 @@ app.post('/registrar', async (req, res) => {
   };
 
   fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
-
-  res.send('✅ Cadastro realizado com sucesso. <a href="/login">Ir para login</a>');
+  // ✅ Redireciona para a tela de sucesso
+  res.redirect('/cadastro-sucesso');
+  });
+app.get('/cadastro-sucesso', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Cadastro Realizado</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
+          body {
+            background-color: #0A0A0A;
+            color: #00FFFF;
+            font-family: 'Orbitron', sans-serif;
+            text-align: center;
+            padding-top: 80px;
+          }
+          h1 {
+            font-size: 36px;
+            text-shadow: 0 0 10px #39FF14;
+            color: #39FF14;
+          }
+          .neon-button {
+            display: inline-block;
+            margin-top: 30px;
+            background-color: #000;
+            color: #00FFFF;
+            border: 2px solid #00FFFF;
+            padding: 12px 24px;
+            font-size: 18px;
+            text-decoration: none;
+            box-shadow: 0 0 10px #00FFFF;
+            transition: box-shadow 0.3s ease-in-out, transform 0.2s ease;
+          }
+          .neon-button:hover {
+            box-shadow: 0 0 20px #00FFFF, 0 0 30px #00FFFF;
+            transform: scale(1.05);
+          }
+        </style>
+        <script>
+          function playSound() {
+            const audio = new Audio('https://www.soundjay.com/button/sounds/button-3.mp3');
+            audio.play();
+          }
+        </script>
+      </head>
+      <body>
+        <h1>✅ Cadastro realizado com sucesso!</h1>
+        <a href="/login" class="neon-button" onclick="playSound()">🔙 Voltar ao login</a>
+      </body>
+    </html>
+  `);
 });
 
 app.get('/recuperar', (req, res) => {
@@ -247,6 +297,20 @@ app.get('/recuperar', (req, res) => {
         </form>
       </body>
     </html>
+    <a href="/login" style="
+      display: inline-block;
+      margin-top: 20px;
+      background-color: #000;
+      color: #00FFFF;
+      border: 1px solid #00FFFF;
+      padding: 10px 20px;
+      font-size: 16px;
+      text-decoration: none;
+      box-shadow: 0 0 10px #00FFFF;
+    ">
+      🔙 Voltar ao login
+    </a>
+
   `);
 });
 
@@ -612,7 +676,6 @@ app.get('/:alias', (req, res) => {
 app.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);
 });
-
 
 
 
