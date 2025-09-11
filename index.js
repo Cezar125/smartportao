@@ -645,10 +645,20 @@ app.post('/excluir-alias', (req, res) => {
   res.redirect('/painel');
 });
 
+import https from 'https';
+
+function httpsGet(url, callback) {
+  https.get(url, callback).on('error', err => {
+    console.error('Erro na requisição HTTPS:', err);
+  });
+}
+
+// 🔓 Rota de logout
 app.get('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
 });
 
+// 🚪 Rota para disparar alias via URL amigável
 app.get('/:alias', (req, res) => {
   const a = normalizar(req.params.alias);
   const u = normalizar(req.query.usuario);
@@ -668,15 +678,29 @@ app.get('/:alias', (req, res) => {
     response.on('end', () => {
       res.send(`✅ Disparo enviado para "${a}". Resposta: ${data}`);
     });
-  }).on('error', e => {
-    console.error(e);
-    res.status(500).send('❌ Erro ao acessar a URL.');
   });
 });
 
+// 🔧 Rota fixa para garagemvip
+app.get('/garagemvip', (req, res) => {
+  const u = req.query.usuario;
+  const a = 'abrirPortao'; // alias fixo
+
+  const url = usuarios[u]?.aliases?.[a];
+  if (!url) {
+    return res.status(404).send(`❌ Alias "${a}" não encontrado para o usuário "${u}".`);
+  }
+
+  httpsGet(url, response => {
+    let data = '';
+    response.on('data', chunk => { data += chunk; });
+    response.on('end', () => {
+      res.send(`✅ Disparo enviado para "${a}". Resposta: ${data}`);
+    });
+  });
+});
+
+// 🚀 Inicia o servidor
 app.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);
 });
-
-
-
