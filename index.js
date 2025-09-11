@@ -1,7 +1,7 @@
 import express from 'express';
 import session from 'express-session';
 import fs from 'fs';
-const bcrypt = require('bcryptjs');
+import bcrypt from 'bcryptjs';
 
 
 const app = express();
