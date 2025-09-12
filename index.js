@@ -685,8 +685,8 @@ app.get('/:alias', (req, res) => {
 app.get('/garagemvip', (req, res) => {
   const u = req.query.usuario;
   const a = 'abrirPortao'; // alias fixo
+  const url = usuarios[u?.toLowerCase().replace(/\s+/g, '')]?.aliases?.[a];
 
-  const url = usuarios[u]?.aliases?.[a];
   if (!url) {
     return res.status(404).send(`❌ Alias "${a}" não encontrado para o usuário "${u}".`);
   }
