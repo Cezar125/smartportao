@@ -600,7 +600,7 @@ app.post('/excluir-usuario', (req, res) => {
 app.get('/garagemvip', (req, res) => {
   const uRaw = req.query.usuario || '';
   const u = normalizar(uRaw);
-  const a = normalizar('abrirPortao'); // <- AQUI: usamos normalizar para bater com as chaves salvas
+  const a = normalizar('garagemvip'); // <- AQUI: usamos normalizar para bater com as chaves salvas
   const url = usuarios[u]?.aliases?.[a];
 
   if (!url) {
