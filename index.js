@@ -2,14 +2,15 @@ import express from 'express';
 import session from 'express-session';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-
+import https from 'https';
 
 const app = express();
 const port = 4000;
 const FILE_PATH = './usuarios.json';
 
-const normalizar = (texto) => {
-  return texto
+// Função de normalização (apenas uma vez)
+const normalizar = (texto = '') => {
+  return String(texto)
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -26,10 +27,43 @@ app.use(session({
 }));
 
 let usuarios = {};
-if (fs.existsSync(FILE_PATH)) {
-  usuarios = JSON.parse(fs.readFileSync(FILE_PATH));
+
+// Helpers para carregar/salvar usuarios
+function carregarUsuarios() {
+  try {
+    if (fs.existsSync(FILE_PATH)) {
+      usuarios = JSON.parse(fs.readFileSync(FILE_PATH));
+    } else {
+      usuarios = {};
+    }
+  } catch (err) {
+    console.error('Erro ao carregar usuarios.json:', err);
+    usuarios = {};
+  }
 }
 
+function salvarUsuarios() {
+  try {
+    fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
+  } catch (err) {
+    console.error('Erro ao salvar usuarios.json:', err);
+  }
+}
+
+carregarUsuarios();
+
+// Wrapper para requisição HTTPS (evita sobrescrever nomes)
+function fireHttpsGet(url, callback) {
+  try {
+    https.get(url, callback).on('error', err => {
+      console.error('Erro na requisição HTTPS:', err);
+    });
+  } catch (err) {
+    console.error('Erro ao chamar fireHttpsGet:', err);
+  }
+}
+
+// Rotas públicas
 app.get('/', (req, res) => res.redirect('/login'));
 
 app.get('/login', (req, res) => {
@@ -88,7 +122,9 @@ app.get('/login', (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
-  const { usuario, senha } = req.body;
+  let { usuario, senha } = req.body;
+  usuario = normalizar(usuario); // normaliza antes de buscar
+
   const u = usuarios[usuario];
 
   if (!u || !(await bcrypt.compare(senha, u.senha))) {
@@ -106,6 +142,8 @@ app.post('/login', async (req, res) => {
   req.session.usuario = usuario;
   res.redirect('/painel');
 });
+
+// Cadastro
 app.get('/registrar', (req, res) => {
   res.send(`
     <html>
@@ -181,8 +219,10 @@ app.get('/registrar', (req, res) => {
 
 `);
 });
+
 app.post('/registrar', async (req, res) => {
-  const { usuario, senha, confirmar, pergunta, resposta } = req.body;
+  let { usuario, senha, confirmar, pergunta, resposta } = req.body;
+  usuario = normalizar(usuario); // normaliza aqui
 
   if (senha !== confirmar) {
     return res.send('❌ As senhas não coincidem. <a href="/registrar">Voltar</a>');
@@ -201,10 +241,11 @@ app.post('/registrar', async (req, res) => {
     aliases: {}
   };
 
-  fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
-  // ✅ Redireciona para a tela de sucesso
+  salvarUsuarios();
   res.redirect('/cadastro-sucesso');
-  });
+});
+
+// Sucesso cadastro
 app.get('/cadastro-sucesso', (req, res) => {
   res.send(`
     <html>
@@ -256,6 +297,7 @@ app.get('/cadastro-sucesso', (req, res) => {
   `);
 });
 
+// Recuperar senha
 app.get('/recuperar', (req, res) => {
   res.send(`
     <html>
@@ -311,214 +353,37 @@ app.get('/recuperar', (req, res) => {
     ">
       🔙 Voltar ao login
     </a>
-
   `);
 });
 
 app.post('/recuperar', async (req, res) => {
-  const { usuario, resposta, nova } = req.body;
+  let { usuario, resposta, nova } = req.body;
+  usuario = normalizar(usuario);
+
   const u = usuarios[usuario];
 
   if (!u) {
     return res.send('❌ Usuário não encontrado. <a href="/recuperar">Tentar novamente</a>');
   }
 
-  if (!u.resposta || u.resposta.toLowerCase().trim() !== resposta.toLowerCase().trim()) {
+  if (!u.resposta || u.resposta.toLowerCase().trim() !== String(resposta).toLowerCase().trim()) {
     return res.send('❌ Resposta secreta incorreta. <a href="/recuperar">Tentar novamente</a>');
   }
 
   const novaHash = await bcrypt.hash(nova, 10);
   u.senha = novaHash;
 
-  fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
+  salvarUsuarios();
 
   res.send('✅ Senha redefinida com sucesso. <a href="/login">Ir para login</a>');
 });
-app.get('/painel', (req, res) => {
-  const u = req.session.usuario;
-  if (!u) return res.redirect('/login');
 
-  const aliases = usuarios[u]?.aliases || {};
-  const lista = Object.entries(aliases).map(([alias, url]) => `
-    <li>
-      <strong>${alias}</strong><br>
-      <div style="position:relative; overflow-x:auto; white-space:nowrap; padding:10px; background-color:#1F1F1F; border:1px solid #8A2BE2; box-shadow:0 0 10px #8A2BE2; margin-top:5px;">
-        <span style="word-break:break-all; color:#39FF14;">${url}</span>
-        <button onclick="navigator.clipboard.writeText('${url}');
-          const msg=document.createElement('span');
-          msg.textContent='✅ Copiado!';
-          msg.style='position:absolute; top:5px; left:5px; color:#00FFFF; font-size:12px; background-color:#000; padding:2px 6px; border:1px solid #00FFFF; box-shadow:0 0 5px #00FFFF;';
-          this.parentElement.appendChild(msg);
-          setTimeout(()=>msg.remove(),2000);"
-          style="position:absolute; top:5px; right:5px; background-color:#000; color:#FF1493; border:1px solid #FF1493; padding:5px; font-size:12px; cursor:pointer;">
-          📋
-        </button>
-      </div>
-      <form method="POST" action="/excluir-alias" style="margin-top:10px;">
-        <input type="hidden" name="alias" value="${alias}">
-        <button type="submit">Excluir</button>
-      </form>
-    </li>
-  `).join('');
-
-  res.send(`
-    <html>
-      <head>
-        <style>
-          body {
-            background-color: #0A0A0A;
-            color: #00FFFF;
-            font-family: 'Orbitron', sans-serif;
-            text-align: center;
-            padding: 30px;
-          }
-          h1, h2, h3 {
-            text-shadow: 0 0 10px #00FFFF;
-          }
-          ul {
-            list-style: none;
-            padding: 0;
-          }
-          li {
-            background-color: #1F1F1F;
-            border: 1px solid #8A2BE2;
-            color: #39FF14;
-            padding: 10px;
-            margin: 10px auto;
-            width: 80%;
-            box-shadow: 0 0 10px #8A2BE2;
-          }
-          input, button {
-            background-color: #000;
-            color: #FF1493;
-            border: 1px solid #FF1493;
-            padding: 10px;
-            margin: 5px;
-            font-size: 16px;
-            box-shadow: 0 0 10px #FF1493;
-          }
-          a {
-            color: #00FFFF;
-            text-decoration: none;
-          }
-        </style>
-      </head>
-      <body>
-        <h1 style="font-size: 48px;">TRON</h1>
-        <h2>Smart Portão</h2>
-        <h3>Painel de ${u}</h3>
-        <p><a href="/logout">Sair</a></p>
-        ${u === 'admin' ? '<p><a href="/excluir-usuario">🛠️ Administração</a></p>' : ''}
-        <h3>Aliases cadastrados:</h3>
-        <ul>${lista || '<li>Nenhum alias cadastrado.</li>'}</ul>
-        <h3>Cadastrar novo alias</h3>
-        <form method="POST" action="/cadastrar-alias">
-          <input type="text" name="alias" placeholder="Alias" required><br>
-          <input type="text" name="url" placeholder="URL do Voice Monkey" required><br>
-          <button type="submit">Cadastrar</button>
-        </form>
-      </body>
-    </html>
-  `);
+// Logout
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/login'));
 });
 
-app.post('/cadastrar-alias', (req, res) => {
-  const u = req.session.usuario;
-  if (!u) return res.redirect('/login');
-
-  const { alias, url } = req.body;
-  const a = normalizar(alias);
-
-  if (!usuarios[u].aliases) usuarios[u].aliases = {};
-  if (usuarios[u].aliases[a]) {
-    return res.send('❌ Esse alias já existe. <a href="/painel">Voltar</a>');
-  }
-
-  usuarios[u].aliases[a] = url;
-  fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
-  res.redirect('/painel');
-});
-
-app.get('/excluir-usuario', (req, res) => {
-  if (req.session.usuario !== 'admin') return res.redirect('/login');
-
-  const lista = Object.keys(usuarios).map(u => `
-    <li>
-      <strong>${u}</strong>
-      <form method="POST" action="/excluir-usuario" style="display:inline;">
-        <input type="hidden" name="usuario" value="${u}">
-        <button type="submit">🗑️ Excluir</button>
-      </form>
-    </li>
-  `).join('');
-
-  res.send(`
-    <html>
-      <head>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
-          body {
-            background-color: #0A0A0A;
-            color: #00FFFF;
-            font-family: 'Orbitron', sans-serif;
-            text-align: center;
-            padding: 50px;
-          }
-          h1 {
-            text-shadow: 0 0 10px #00FFFF;
-          }
-          ul {
-            list-style: none;
-            padding: 0;
-          }
-          li {
-            background-color: #1F1F1F;
-            border: 1px solid #8A2BE2;
-            color: #39FF14;
-            padding: 10px;
-            margin: 10px auto;
-            width: 60%;
-            box-shadow: 0 0 10px #8A2BE2;
-          }
-          button {
-            background-color: #000;
-            color: #FF1493;
-            border: 1px solid #FF1493;
-            padding: 5px 10px;
-            font-size: 14px;
-            box-shadow: 0 0 10px #FF1493;
-            cursor: pointer;
-          }
-          a {
-            color: #00FFFF;
-            text-decoration: none;
-            display: inline-block;
-            margin-top: 30px;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>🛠️ Administração</h1>
-        <h2>Excluir Usuários</h2>
-        <ul>${lista}</ul>
-        <a href="/painel">Voltar ao painel</a>
-      </body>
-    </html>
-  `);
-});
-app.post('/excluir-usuario', (req, res) => {
-  if (req.session.usuario !== 'admin') return res.redirect('/login');
-
-  const { usuario } = req.body;
-
-  if (usuarios[usuario]) {
-    delete usuarios[usuario];
-    fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
-  }
-
-  res.redirect('/excluir-usuario');
-});
-
+// Painel (apenas um handler, sem duplicatas)
 app.get('/painel', (req, res) => {
   const u = req.session.usuario;
   if (!u) return res.redirect('/login');
@@ -613,94 +478,168 @@ app.get('/painel', (req, res) => {
     </html>
   `);
 });
+
+// Cadastrar alias
 app.post('/cadastrar-alias', (req, res) => {
   const u = req.session.usuario;
   if (!u) return res.redirect('/login');
 
-  const { alias, url } = req.body;
-  const a = normalizar(alias);
+  let { alias, url } = req.body;
+  alias = normalizar(alias);
 
   if (!usuarios[u].aliases) usuarios[u].aliases = {};
-  if (usuarios[u].aliases[a]) {
+  if (usuarios[u].aliases[alias]) {
     return res.send('❌ Esse alias já existe. <a href="/painel">Voltar</a>');
   }
 
-  usuarios[u].aliases[a] = url;
-  fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
+  usuarios[u].aliases[alias] = url;
+  salvarUsuarios();
   res.redirect('/painel');
 });
 
+// Excluir alias
 app.post('/excluir-alias', (req, res) => {
   const u = req.session.usuario;
   if (!u) return res.redirect('/login');
 
-  const { alias } = req.body;
-  const a = normalizar(alias);
+  let { alias } = req.body;
+  alias = normalizar(alias);
 
-  if (usuarios[u]?.aliases?.[a]) {
-    delete usuarios[u].aliases[a];
-    fs.writeFileSync(FILE_PATH, JSON.stringify(usuarios, null, 2));
+  if (usuarios[u]?.aliases?.[alias]) {
+    delete usuarios[u].aliases[alias];
+    salvarUsuarios();
   }
 
   res.redirect('/painel');
 });
 
-import https from 'https';
+// Admin - listar usuários p/ exclusão
+app.get('/excluir-usuario', (req, res) => {
+  if (req.session.usuario !== 'admin') return res.redirect('/login');
 
-function httpsGet(url, callback) {
-  https.get(url, callback).on('error', err => {
-    console.error('Erro na requisição HTTPS:', err);
-  });
-}
+  const lista = Object.keys(usuarios).map(u => `
+    <li>
+      <strong>${u}</strong>
+      <form method="POST" action="/excluir-usuario" style="display:inline;">
+        <input type="hidden" name="usuario" value="${u}">
+        <button type="submit">🗑️ Excluir</button>
+      </form>
+    </li>
+  `).join('');
 
-// 🔓 Rota de logout
-app.get('/logout', (req, res) => {
-  req.session.destroy(() => res.redirect('/login'));
+  res.send(`
+    <html>
+      <head>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
+          body {
+            background-color: #0A0A0A;
+            color: #00FFFF;
+            font-family: 'Orbitron', sans-serif;
+            text-align: center;
+            padding: 50px;
+          }
+          h1 {
+            text-shadow: 0 0 10px #00FFFF;
+          }
+          ul {
+            list-style: none;
+            padding: 0;
+          }
+          li {
+            background-color: #1F1F1F;
+            border: 1px solid #8A2BE2;
+            color: #39FF14;
+            padding: 10px;
+            margin: 10px auto;
+            width: 60%;
+            box-shadow: 0 0 10px #8A2BE2;
+          }
+          button {
+            background-color: #000;
+            color: #FF1493;
+            border: 1px solid #FF1493;
+            padding: 5px 10px;
+            font-size: 14px;
+            box-shadow: 0 0 10px #FF1493;
+            cursor: pointer;
+          }
+          a {
+            color: #00FFFF;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 30px;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>🛠️ Administração</h1>
+        <h2>Excluir Usuários</h2>
+        <ul>${lista}</ul>
+        <a href="/painel">Voltar ao painel</a>
+      </body>
+    </html>
+  `);
 });
 
-// 🚪 Rota para disparar alias via URL amigável
-app.get('/:alias', (req, res) => {
-  const a = normalizar(req.params.alias);
-  const u = normalizar(req.query.usuario);
+app.post('/excluir-usuario', (req, res) => {
+  if (req.session.usuario !== 'admin') return res.redirect('/login');
 
-  if (!u || !usuarios[u]) {
+  const { usuario } = req.body;
+
+  if (usuarios[usuario]) {
+    delete usuarios[usuario];
+    salvarUsuarios();
+  }
+
+  res.redirect('/excluir-usuario');
+});
+
+// Rota fixa para garagemvip (colocada antes do catch-all)
+app.get('/garagemvip', (req, res) => {
+  const uRaw = req.query.usuario || '';
+  const u = normalizar(uRaw);
+  const a = 'abrirPortao'; // alias fixo
+  const url = usuarios[u]?.aliases?.[a];
+
+  if (!url) {
+    return res.status(404).send(`❌ Alias "${a}" não encontrado para o usuário "${uRaw}".`);
+  }
+
+  fireHttpsGet(url, response => {
+    let data = '';
+    response.on('data', chunk => { data += chunk; });
+    response.on('end', () => {
+      res.send(`✅ Disparo enviado para "${a}". Resposta: ${data}`);
+    });
+  });
+});
+
+// Catch-all para alias amigável (deve ficar por último)
+app.get('/:alias', (req, res) => {
+  const alias = normalizar(req.params.alias);
+  const usuario = normalizar(req.query.usuario || '');
+
+  if (!usuario || !usuarios[usuario]) {
     return res.status(401).send('❌ Usuário não informado ou inválido.');
   }
 
-  const url = usuarios[u]?.aliases?.[a];
+  const url = usuarios[usuario]?.aliases?.[alias];
   if (!url) {
-    return res.status(404).send(`❌ Alias "${a}" não encontrado para o usuário "${u}".`);
+    return res.status(404).send(`❌ Alias "${alias}" não encontrado para o usuário "${usuario}".`);
   }
 
-  httpsGet(url, response => {
+  fireHttpsGet(url, response => {
     let data = '';
     response.on('data', chunk => { data += chunk; });
     response.on('end', () => {
-      res.send(`✅ Disparo enviado para "${a}". Resposta: ${data}`);
+      res.send(`✅ Disparo enviado para "${alias}". Resposta: ${data}`);
     });
   });
 });
 
-// 🔧 Rota fixa para garagemvip
-app.get('/garagemvip', (req, res) => {
-  const u = req.query.usuario;
-  const a = 'abrirPortao'; // alias fixo
-  const url = usuarios[u?.toLowerCase().replace(/\s+/g, '')]?.aliases?.[a];
-
-  if (!url) {
-    return res.status(404).send(`❌ Alias "${a}" não encontrado para o usuário "${u}".`);
-  }
-
-  httpsGet(url, response => {
-    let data = '';
-    response.on('data', chunk => { data += chunk; });
-    response.on('end', () => {
-      res.send(`✅ Disparo enviado para "${a}". Resposta: ${data}`);
-    });
-  });
-});
-
-// 🚀 Inicia o servidor
+// Start server
 app.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);
 });
+
