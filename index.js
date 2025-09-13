@@ -596,14 +596,16 @@ app.post('/excluir-usuario', (req, res) => {
 });
 
 // Rota fixa para garagemvip (colocada antes do catch-all)
+
 app.get('/garagemvip', (req, res) => {
   const uRaw = req.query.usuario || '';
   const u = normalizar(uRaw);
-  const a = 'abrirPortao'; // alias fixo
+  const a = normalizar('abrirPortao'); // <- AQUI: usamos normalizar para bater com as chaves salvas
   const url = usuarios[u]?.aliases?.[a];
 
   if (!url) {
-    return res.status(404).send(`❌ Alias "${a}" não encontrado para o usuário "${uRaw}".`);
+    const disponiveis = Object.keys(usuarios[u]?.aliases || {}).join(', ') || 'nenhum';
+    return res.status(404).send(`❌ Alias "${a}" (normalizado) não encontrado para o usuário "${uRaw}". Aliases disponíveis: ${disponiveis}.`);
   }
 
   fireHttpsGet(url, response => {
@@ -614,6 +616,7 @@ app.get('/garagemvip', (req, res) => {
     });
   });
 });
+
 
 // Catch-all para alias amigável (deve ficar por último)
 app.get('/:alias', (req, res) => {
